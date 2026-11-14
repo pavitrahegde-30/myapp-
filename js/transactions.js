@@ -181,8 +181,10 @@ export function filterTransactions(transactions, filters = {}) {
 export function sortTransactions(transactions, sortOrder = 'date-desc') {
   const copy = [...transactions];
   copy.sort((a, b) => {
+    const idA = String(a.id ?? '');
+    const idB = String(b.id ?? '');
     if (sortOrder === 'date-asc') {
-      return a.date.localeCompare(b.date) || a.id.localeCompare(b.id);
+      return a.date.localeCompare(b.date) || idA.localeCompare(idB, undefined, { numeric: true });
     }
     if (sortOrder === 'amount-desc') {
       return b.amount - a.amount || b.date.localeCompare(a.date);
@@ -191,7 +193,7 @@ export function sortTransactions(transactions, sortOrder = 'date-desc') {
       return a.amount - b.amount || b.date.localeCompare(a.date);
     }
     // Default: newest first
-    return b.date.localeCompare(a.date) || b.id.localeCompare(a.id);
+    return b.date.localeCompare(a.date) || idB.localeCompare(idA, undefined, { numeric: true });
   });
   return copy;
 }
@@ -445,12 +447,16 @@ export function initTransactionsModule(callbacks) {
     const deleteBtn = e.target.closest('[data-delete-id]');
     if (deleteBtn) {
       const id = deleteBtn.dataset.deleteId;
-      const txn = getTransactions().find((t) => t.id === id);
+      const txn = getTransactions().find((t) => String(t.id) === String(id));
       const label = txn ? `"${txn.title}"` : 'this transaction';
-      appCallbacks.openConfirm(`Are you sure you want to delete ${label}? This action cannot be undone.`, () => {
-        if (deleteTransaction(id)) {
-          appCallbacks.showToast('Transaction deleted', 'success');
-          appCallbacks.onDataChange();
+      appCallbacks.openConfirm(`Are you sure you want to delete ${label}? This action cannot be undone.`, async () => {
+        try {
+          if (await deleteTransaction(id)) {
+            appCallbacks.showToast('Transaction deleted', 'success');
+            await appCallbacks.onDataChange();
+          }
+        } catch (err) {
+          appCallbacks.showToast(err.message, 'error');
         }
       });
     }
@@ -548,14 +554,20 @@ function setupInlineForm() {
       return;
     }
 
-    addTransaction(payload);
-    form.reset();
-    typeInput.value = 'expense';
-    typeButtons.forEach((b) => b.classList.toggle('active', b.dataset.typeOption === 'expense'));
-    populateCategorySelect(categorySelect, 'expense');
-    dateInput.value = getTodayISO();
-    appCallbacks.showToast(`${payload.type === 'income' ? 'Income' : 'Expense'} added`, 'success');
-    appCallbacks.onDataChange();
+    (async () => {
+      try {
+        await addTransaction(payload);
+        form.reset();
+        typeInput.value = 'expense';
+        typeButtons.forEach((b) => b.classList.toggle('active', b.dataset.typeOption === 'expense'));
+        populateCategorySelect(categorySelect, 'expense');
+        dateInput.value = getTodayISO();
+        appCallbacks.showToast(`${payload.type === 'income' ? 'Income' : 'Expense'} added`, 'success');
+        await appCallbacks.onDataChange();
+      } catch (err) {
+        appCallbacks.showToast(err.message, 'error');
+      }
+    })();
   });
 }
 
@@ -624,16 +636,22 @@ function setupModalForm() {
       return;
     }
 
-    if (id) {
-      updateTransaction(id, payload);
-      appCallbacks.showToast('Transaction updated', 'success');
-    } else {
-      addTransaction(payload);
-      appCallbacks.showToast(`${payload.type === 'income' ? 'Income' : 'Expense'} added`, 'success');
-    }
+    (async () => {
+      try {
+        if (id) {
+          await updateTransaction(id, payload);
+          appCallbacks.showToast('Transaction updated', 'success');
+        } else {
+          await addTransaction(payload);
+          appCallbacks.showToast(`${payload.type === 'income' ? 'Income' : 'Expense'} added`, 'success');
+        }
 
-    closeModal();
-    appCallbacks.onDataChange();
+        closeModal();
+        await appCallbacks.onDataChange();
+      } catch (err) {
+        appCallbacks.showToast(err.message, 'error');
+      }
+    })();
   });
 }
 
@@ -670,7 +688,7 @@ export function openTransactionModal(editId = null) {
   clearModalErrors();
 
   if (editId) {
-    const existing = getTransactions().find((t) => t.id === editId);
+    const existing = getTransactions().find((t) => String(t.id) === String(editId));
     if (!existing) return;
 
     titleEl.textContent = 'Edit Transaction';

@@ -2,12 +2,16 @@
  * app.js
  * Application entry point and view coordinator.
  * Wires navigation, active month selection, global modals, toasts, and reactive re-rendering.
+ * Communicates with the backend REST API via storage.js data layer.
  */
 
 import {
   seedInitialDataIfNeeded,
+  migrateLocalStorageIfNeeded,
   resetDemoData,
+  fetchTransactions,
   getTransactions,
+  fetchBudgetForMonth,
   getLocalMonthKey
 } from './storage.js';
 import {
@@ -20,6 +24,7 @@ import {
 import { renderDashboard } from './dashboard.js';
 import { renderAnalytics } from './analytics.js';
 import { initBudgetModule, renderBudget } from './budget.js';
+import { initSplitsModule, renderSplits } from './splits.js';
 
 const VIEW_META = {
   dashboard: {
@@ -41,6 +46,10 @@ const VIEW_META = {
   budget: {
     title: 'Budget Management',
     subtitle: 'Set monthly spending targets and monitor utilization alerts'
+  },
+  splits: {
+    title: 'Split Expenses',
+    subtitle: 'Split bills with friends, track who owes you, and manage repayments'
   }
 };
 
@@ -51,10 +60,31 @@ const appState = {
 
 let confirmHandler = null;
 
-function init() {
+function showLoading(show) {
+  const loadingBanner = document.getElementById('app-loading-banner');
+  if (loadingBanner) {
+    loadingBanner.classList.toggle('hidden', !show);
+    if (show && window.lucide) window.lucide.createIcons();
+  }
+}
+
+function showError(message) {
+  const errorBanner = document.getElementById('app-error-banner');
+  const errorMsg = document.getElementById('app-error-message');
+  if (errorBanner) {
+    if (message) {
+      if (errorMsg) errorMsg.textContent = message;
+      errorBanner.classList.remove('hidden');
+      if (window.lucide) window.lucide.createIcons();
+    } else {
+      errorBanner.classList.add('hidden');
+    }
+  }
+}
+
+async function init() {
   seedInitialDataIfNeeded();
 
-  populateMonthSelector();
   setupNavigation();
   setupMobileSidebar();
   setupConfirmModal();
@@ -72,13 +102,39 @@ function init() {
     showToast
   });
 
-  // Handle URL hash route on load if present
+  initSplitsModule({
+    onDataChange: refreshAllViews,
+    showToast,
+    openConfirm
+  });
+
   const initialHash = window.location.hash.replace('#', '');
   if (VIEW_META[initialHash]) {
     switchView(initialHash);
-  } else {
-    refreshAllViews();
   }
+
+  showLoading(true);
+  showError(null);
+
+  try {
+    const migrationResult = await migrateLocalStorageIfNeeded();
+    if (migrationResult && migrationResult.migrated) {
+      showToast(
+        `Imported ${migrationResult.importedTransactions} transactions into database`,
+        'success'
+      );
+    }
+
+    await fetchTransactions();
+    await fetchBudgetForMonth(appState.activeMonth);
+    showLoading(false);
+  } catch (err) {
+    showLoading(false);
+    showError(`Failed to load data from server: ${err.message}. Is the backend running on port 3000?`);
+    showToast('Failed to connect to backend', 'error');
+  }
+
+  refreshAllViews();
 }
 
 function populateMonthSelector() {
@@ -111,9 +167,9 @@ function populateMonthSelector() {
   select.value = appState.activeMonth;
 
   if (!select.dataset.bound) {
-    select.addEventListener('change', (e) => {
+    select.addEventListener('change', async (e) => {
       appState.activeMonth = e.target.value;
-      refreshAllViews();
+      await refreshAllViews();
     });
     select.dataset.bound = 'true';
   }
@@ -191,12 +247,18 @@ function setupGlobalActions() {
   document.getElementById('reset-demo-btn')?.addEventListener('click', () => {
     openConfirm(
       'Reset all transactions and budget settings back to the initial sample dataset?',
-      () => {
-        resetDemoData();
-        appState.activeMonth = getLocalMonthKey(0);
-        populateMonthSelector();
-        refreshAllViews();
-        showToast('Demo data restored', 'success');
+      async () => {
+        try {
+          showLoading(true);
+          await resetDemoData();
+          appState.activeMonth = getLocalMonthKey(0);
+          await refreshAllViews();
+          showLoading(false);
+          showToast('Demo data restored', 'success');
+        } catch (err) {
+          showLoading(false);
+          showToast(err.message, 'error');
+        }
       },
       'Reset Demo Data',
       'Reset Data'
@@ -270,8 +332,13 @@ function showToast(message, type = 'success') {
   }, 3000);
 }
 
-function refreshActiveView() {
-  // Always keep sidebar budget widget and month selector up to date
+async function refreshActiveView() {
+  try {
+    await fetchBudgetForMonth(appState.activeMonth);
+  } catch (err) {
+    console.warn('Could not refresh budget for active month:', err);
+  }
+
   populateMonthSelector();
   renderBudget(appState.activeMonth);
 
@@ -285,6 +352,8 @@ function refreshActiveView() {
     renderAnalytics(appState.activeMonth);
   } else if (appState.activeView === 'budget') {
     renderBudget(appState.activeMonth);
+  } else if (appState.activeView === 'splits') {
+    renderSplits();
   }
 
   if (window.lucide) {
@@ -292,13 +361,22 @@ function refreshActiveView() {
   }
 }
 
-function refreshAllViews() {
+async function refreshAllViews() {
+  try {
+    await fetchTransactions();
+    await fetchBudgetForMonth(appState.activeMonth);
+    showError(null);
+  } catch (err) {
+    showError(`Error updating view: ${err.message}`);
+  }
+
   populateMonthSelector();
   renderDashboard(appState.activeMonth);
   updateInlinePreview();
   renderTransactionHistory();
   renderAnalytics(appState.activeMonth);
   renderBudget(appState.activeMonth);
+  renderSplits();
 
   if (window.lucide) {
     window.lucide.createIcons();

@@ -70,6 +70,10 @@
             <i data-lucide="wallet"></i>
             <span>Budget Management</span>
           </button>
+          <button type="button" class="nav-link" data-view="splits">
+            <i data-lucide="users"></i>
+            <span>Split Expenses</span>
+          </button>
         </nav>
 
         <div class="sidebar-footer">
@@ -127,6 +131,22 @@
 
         <!-- Dynamic View Container -->
         <main class="main-content" id="main-content">
+          <!-- Global Loading & Error State Banners -->
+          <div id="app-loading-banner" class="alert-banner hidden" role="status" style="margin-bottom: 1.5rem;">
+            <i data-lucide="loader"></i>
+            <div class="alert-banner-content">
+              <strong>Loading records...</strong>
+              <p>Fetching financial data from server</p>
+            </div>
+          </div>
+          <div id="app-error-banner" class="alert-banner danger hidden" role="alert" style="margin-bottom: 1.5rem;">
+            <i data-lucide="alert-octagon"></i>
+            <div class="alert-banner-content">
+              <strong id="app-error-title">Server Connection Error</strong>
+              <p id="app-error-message">Unable to connect to the backend server. Please verify the server is running.</p>
+            </div>
+          </div>
+
           <!-- VIEW 1: DASHBOARD -->
           <section id="view-dashboard" class="view-section active" aria-labelledby="page-title">
             <div id="dashboard-budget-alert" class="alert-banner hidden" role="status"></div>
@@ -222,6 +242,8 @@
               </div>
             </article>
           </section>
+
+
 
           <!-- VIEW 2: INCOME & EXPENSE MANAGEMENT (ADD TRANSACTION) -->
           <section id="view-add-transaction" class="view-section" aria-label="Add Income or Expense">
@@ -342,6 +364,8 @@
             </div>
           </section>
 
+
+
           <!-- VIEW 3: TRANSACTION HISTORY -->
           <section id="view-transactions" class="view-section" aria-label="Transaction History">
             <article class="card table-card">
@@ -411,6 +435,8 @@
             </article>
           </section>
 
+
+
           <!-- VIEW 4: EXPENSE ANALYTICS -->
           <section id="view-analytics" class="view-section" aria-label="Expense Analytics">
             <div class="kpi-grid">
@@ -477,6 +503,8 @@
               </article>
             </div>
           </section>
+
+
 
           <!-- VIEW 5: BUDGET MANAGEMENT -->
           <section id="view-budget" class="view-section" aria-label="Budget Management">
@@ -582,6 +610,166 @@
                       <p>Displays an exceeded alert when monthly spending surpasses your set budget.</p>
                     </div>
                   </div>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <!-- VIEW 6: SPLIT EXPENSES -->
+          <section id="view-splits" class="view-section" aria-label="Split Expenses">
+            <div class="kpi-grid">
+              <article class="card kpi-card">
+                <div class="kpi-label">Total Split Bills</div>
+                <div class="kpi-value mono" id="splits-total-bills">$0.00</div>
+                <div class="kpi-meta" id="splits-total-count">0 shared expenses</div>
+              </article>
+              <article class="card kpi-card">
+                <div class="kpi-label">Pending from Friends</div>
+                <div class="kpi-value mono text-expense" id="splits-total-owed">$0.00</div>
+                <div class="kpi-meta" id="splits-pending-count">0 pending repayments</div>
+              </article>
+              <article class="card kpi-card">
+                <div class="kpi-label">Settled / Collected</div>
+                <div class="kpi-value mono text-income" id="splits-total-settled">$0.00</div>
+                <div class="kpi-meta" id="splits-settled-count">0 repayments received</div>
+              </article>
+              <article class="card kpi-card">
+                <div class="kpi-label">Your Personal Share</div>
+                <div class="kpi-value mono" id="splits-my-share">$0.00</div>
+                <div class="kpi-meta">Net cost across all splits</div>
+              </article>
+            </div>
+
+            <div class="form-layout-grid" style="margin-top: 24px;">
+              <!-- Form: Create Split Expense -->
+              <article class="card form-card">
+                <div class="card-header">
+                  <div>
+                    <h2 class="card-title">Split New Expense</h2>
+                    <p class="card-subtitle">Divide a group bill and track who owes you</p>
+                  </div>
+                </div>
+
+                <form id="split-expense-form" class="txn-form" novalidate>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label class="form-label" for="split-title">Bill / Event Title</label>
+                      <input
+                        type="text"
+                        id="split-title"
+                        name="title"
+                        class="form-control"
+                        placeholder="e.g., Italian Bistro, Roadtrip Fuel"
+                        maxlength="80"
+                        required
+                      />
+                      <span class="field-error" id="split-title-error"></span>
+                    </div>
+
+                    <div class="form-group">
+                      <label class="form-label" for="split-amount">Total Bill Amount ($)</label>
+                      <input
+                        type="number"
+                        id="split-amount"
+                        name="amount"
+                        class="form-control mono"
+                        placeholder="0.00"
+                        step="0.01"
+                        min="0.01"
+                        required
+                      />
+                      <span class="field-error" id="split-amount-error"></span>
+                    </div>
+                  </div>
+
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label class="form-label" for="split-category">Category</label>
+                      <select id="split-category" name="category" class="form-control" required></select>
+                      <span class="field-error" id="split-category-error"></span>
+                    </div>
+
+                    <div class="form-group">
+                      <label class="form-label" for="split-date">Date</label>
+                      <input type="date" id="split-date" name="date" class="form-control" required />
+                      <span class="field-error" id="split-date-error"></span>
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                      <label class="form-label" style="margin-bottom: 0;">Split Mode</label>
+                      <div class="segmented-control segmented-control-sm" id="split-mode-toggle">
+                        <button type="button" class="segment-btn active" data-split-mode="equal">Split Equally</button>
+                        <button type="button" class="segment-btn" data-split-mode="custom">Custom Amounts</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Participants list container -->
+                  <div class="form-group">
+                    <label class="form-label">Friends Sharing Bill</label>
+                    <div id="split-participants-list" class="split-participants-list">
+                      <!-- Dynamically rendered participant rows -->
+                    </div>
+                    <button type="button" id="split-add-participant-btn" class="btn btn-secondary btn-sm" style="margin-top: 10px;">
+                      <i data-lucide="user-plus"></i>
+                      <span>Add Friend</span>
+                    </button>
+                    <span class="field-error" id="split-participants-error"></span>
+                  </div>
+
+                  <!-- Live preview of shares -->
+                  <div class="preview-summary-list" style="margin-bottom: 16px; padding: 12px 16px; border-radius: 8px; background: var(--bg-hover, #f8fafc); border: 1px solid var(--border-color, #e2e8f0);">
+                    <div class="preview-row">
+                      <span>Your Share:</span>
+                      <strong class="mono" id="split-preview-my-share">$0.00</strong>
+                    </div>
+                    <div class="preview-row">
+                      <span>Friends' Total Share:</span>
+                      <strong class="mono text-expense" id="split-preview-friends-share">$0.00</strong>
+                    </div>
+                  </div>
+
+                  <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="split-record-my-share" checked style="width: 16px; height: 16px; accent-color: var(--color-primary, #0f766e);" />
+                    <label for="split-record-my-share" style="font-size: 13px; color: var(--text-secondary); cursor: pointer;">
+                      Record my personal share as an expense in Transactions
+                    </label>
+                  </div>
+
+                  <div class="form-actions">
+                    <button type="reset" class="btn btn-secondary" id="split-form-reset-btn">Clear</button>
+                    <button type="submit" class="btn btn-primary">
+                      <i data-lucide="check"></i>
+                      <span>Save Split Expense</span>
+                    </button>
+                  </div>
+                </form>
+              </article>
+
+              <!-- List: Active Split Expenses -->
+              <article class="card table-card">
+                <div class="card-header">
+                  <div>
+                    <h2 class="card-title">Shared Bills &amp; Settlements</h2>
+                    <p class="card-subtitle">Track repayments and mark friends who paid</p>
+                  </div>
+                  <div class="segmented-control segmented-control-sm" id="splits-filter-toggle">
+                    <button type="button" class="segment-btn active" data-splits-filter="all">All</button>
+                    <button type="button" class="segment-btn" data-splits-filter="pending">Pending</button>
+                    <button type="button" class="segment-btn" data-splits-filter="settled">Settled</button>
+                  </div>
+                </div>
+
+                <div id="splits-cards-container" class="splits-cards-container" style="padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+                  <!-- Rendered dynamically -->
+                </div>
+
+                <div id="splits-empty-state" class="empty-state hidden">
+                  <i data-lucide="users"></i>
+                  <h3>No split expenses recorded</h3>
+                  <p>When you split a bill or group cost with friends, create an entry here to track repayments.</p>
                 </div>
               </article>
             </div>

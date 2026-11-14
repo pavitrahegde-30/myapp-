@@ -75,9 +75,15 @@ export function initBudgetModule(callbacks) {
     }
 
     const activeMonth = budgetCallbacks.getActiveMonth();
-    saveBudgetForMonth(activeMonth, raw);
-    budgetCallbacks.showToast(`Budget updated for ${formatMonthLabel(activeMonth)}`, 'success');
-    budgetCallbacks.onDataChange();
+    (async () => {
+      try {
+        await saveBudgetForMonth(activeMonth, raw);
+        budgetCallbacks.showToast(`Budget updated for ${formatMonthLabel(activeMonth)}`, 'success');
+        await budgetCallbacks.onDataChange();
+      } catch (err) {
+        budgetCallbacks.showToast(err.message, 'error');
+      }
+    })();
   });
 }
 
